@@ -154,6 +154,8 @@ let init ?(connect_timeout = 1) ?(version = 3) hosts =
                     (match Ldap_url.of_string host with
                          {url_mech=mech;url_host=(Some host);url_port=(Some port);_} ->
                            (mech, host, int_of_string port)
+                       | {url_mech=`SSL;url_host=(Some host);url_port=None;_} ->
+                           (`SSL, host, 636)
                        | {url_mech=mech;url_host=(Some host);url_port=None;_} ->
                            (mech, host, 389)
                        | _ -> raise
