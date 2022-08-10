@@ -22,7 +22,6 @@ open Ldap_types
 open Ldap_protocol
 open Lber
 open Unix
-open Sys
 
 type msgid = Int32.t
 
@@ -163,46 +162,39 @@ let init ?(connect_timeout = 1) ?(version = 3) hosts =
                  hosts)))
       in
       let rec open_con addrs =
-        let previous_signal = ref Signal_default in
-          match addrs with
-              (mech, addr, port) :: tl ->
-                (try
-                   if mech = `PLAIN then
-                     let s = socket PF_INET SOCK_STREAM 0 in
-                       try
-                         previous_signal :=
-                           signal sigalrm
-                             (Signal_handle (fun _ -> raise Timeout));
-                         ignore (alarm connect_timeout);
-                         connect s (ADDR_INET (addr, port));
-                         ignore (alarm 0);
-                         set_signal sigalrm !previous_signal;
-                         Plain s
-                       with exn -> close s;raise exn
-                   else
-                     (previous_signal :=
-                        signal sigalrm
-                          (Signal_handle (fun _ -> raise Timeout));
-                      ignore (alarm connect_timeout);
-                      let ssl = Ssl (Ssl.open_connection
-                                       Ssl.SSLv23
-                                       (ADDR_INET (addr, port)))
-                      in
-                        ignore (alarm 0);
-                        set_signal sigalrm !previous_signal;
-                        ssl)
-                 with
-                     Unix_error (ECONNREFUSED, _, _)
-                   | Unix_error (EHOSTDOWN, _, _)
-                   | Unix_error (EHOSTUNREACH, _, _)
-                   | Unix_error (ECONNRESET, _, _)
-                   | Unix_error (ECONNABORTED, _, _)
-                   | Ssl.Connection_error _
-                   | Timeout ->
-                       ignore (alarm 0);
-                       set_signal sigalrm !previous_signal;
-                       open_con tl)
-            | [] -> raise (LDAP_Failure (`SERVER_DOWN, "", ext_res))
+        match addrs with
+            (mech, addr, port) :: tl ->
+              (try
+                 if mech = `PLAIN then
+                   let s = socket PF_INET SOCK_STREAM 0 in
+                     try
+                       set_nonblock s;
+                       (try connect s (ADDR_INET (addr, port))
+                        with Unix_error (EINPROGRESS, _, _) -> ());
+                       let (_, ok, _) =
+                         select [] [s] [] (float_of_int connect_timeout)
+                       in
+                         match getsockopt_error s with
+                             Some err ->
+                               raise (Unix_error (err, "open_con", ""))
+                           | None ->
+                               if ok <> [s] then raise Timeout;
+                               clear_nonblock s;
+                               Plain s
+                     with exn -> close s;raise exn
+                 else
+                   Ssl (Ssl.open_connection
+                          Ssl.SSLv23
+                          (ADDR_INET (addr, port)))
+               with
+                   Unix_error (ECONNREFUSED, _, _)
+                 | Unix_error (EHOSTDOWN, _, _)
+                 | Unix_error (EHOSTUNREACH, _, _)
+                 | Unix_error (ECONNRESET, _, _)
+                 | Unix_error (ECONNABORTED, _, _)
+                 | Ssl.Connection_error _
+                 | Timeout -> open_con tl)
+          | [] -> raise (LDAP_Failure (`SERVER_DOWN, "", ext_res))
       in
         open_con addrs
     in
