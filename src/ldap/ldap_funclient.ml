@@ -184,6 +184,7 @@ let init ?(connect_timeout = 1) ?(version = 3) hosts =
                      with exn -> close s;raise exn
                  else
                    Ssl (Ssl.open_connection
+                          ~timeout:(float_of_int connect_timeout)
                           Ssl.SSLv23
                           (ADDR_INET (addr, port)))
                with
@@ -192,6 +193,7 @@ let init ?(connect_timeout = 1) ?(version = 3) hosts =
                  | Unix_error (EHOSTUNREACH, _, _)
                  | Unix_error (ECONNRESET, _, _)
                  | Unix_error (ECONNABORTED, _, _)
+                 | Unix_error (ETIMEDOUT, _, _)
                  | Ssl.Connection_error _
                  | Timeout -> open_con tl)
           | [] -> raise (LDAP_Failure (`SERVER_DOWN, "", ext_res))

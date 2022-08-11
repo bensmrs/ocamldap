@@ -19,7 +19,7 @@
     (ocaml (>= 4.03.0))
     (ocamlnet (>= 3.6.0))
     pcre
-    (ssl (>= 0.5.3)))
+    (ssl (>= 0.5.12)))
   (conflicts
     (ocamldap (<> transition)))
   (tags ("ldap")))
