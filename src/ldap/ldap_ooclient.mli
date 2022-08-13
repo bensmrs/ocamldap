@@ -200,6 +200,9 @@ val of_entry : ldapentry -> search_result_entry
     [connect_timeout] seconds [LDAP_Failure (`SERVER_DOWN, ...)]  will
     be raised.
 
+    @param timeout Replaces [connect_timeout]. A float version of
+    [connect_timeout] which also specifies read and write timeouts.
+
     @param referral_policy In a future version of ocamldap this will
     be used to specify what you would like to do in the event of a
     referral. Currently it does nothing and is ignored see
@@ -210,6 +213,7 @@ val of_entry : ldapentry -> search_result_entry
 *)
 class ldapcon :
   ?connect_timeout:int ->
+  ?timeout:float ->
   ?referral_policy:[> `RETURN ] ->
   ?version:int ->
   string list ->

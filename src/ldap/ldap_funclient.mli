@@ -57,7 +57,8 @@ type page_control =
   @raise Failure May raise
   Failure "int_of_string" if you pass it a malformed url. May also
   raise various lexer errors under the same conditions. *)
-val init : ?connect_timeout:int -> ?version:int -> string list -> conn
+val init : ?connect_timeout:int -> ?timeout:float -> ?version:int ->
+           string list -> conn
 
 (** close the connection to the server. You may not use the conn
   after you have unbound, if you do you will get an exception. *)

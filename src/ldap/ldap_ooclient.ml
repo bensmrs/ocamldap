@@ -380,7 +380,8 @@ let fold (f:ldapentry -> 'a -> 'a) (v:'a) (res: ?abandon:bool -> unit -> ldapent
       | exn -> (try ignore (res ~abandon:true ()) with _ -> ());raise exn
 
 (* a connection to an ldap server *)
-class ldapcon ?(connect_timeout=1) ?(referral_policy=`RETURN) ?(version = 3) hosts =
+class ldapcon ?(connect_timeout=1) ?(timeout) ?(referral_policy=`RETURN)
+              ?(version = 3) hosts =
 object (self)
   val _referral_policy = referral_policy (* TODO: not used?? *)
 
@@ -389,12 +390,12 @@ object (self)
   val mutable mth = `SIMPLE
   val mutable bound = true
   val mutable reconnect_successful = true
-  val mutable con = init ~connect_timeout:connect_timeout ~version:version hosts
+  val mutable con = init ~connect_timeout ?timeout ~version hosts
   method private reconnect =
     if bound then unbind con;
     bound <- false;
     reconnect_successful <- false;
-    con <- init ~connect_timeout:connect_timeout ~version:version hosts;
+    con <- init ~connect_timeout ?timeout ~version hosts;
     bound <- true;
     bind_s ~who: bdn ~cred: pwd ~auth_method: mth con;
     reconnect_successful <- true;
@@ -408,7 +409,7 @@ object (self)
 
   method bind ?(cred = "") ?(meth:authmethod = `SIMPLE) dn =
     if not bound then begin
-      con <- init ~connect_timeout:connect_timeout ~version: version hosts;
+      con <- init ~connect_timeout ?timeout ~version hosts;
       bound <- true
     end;
     bind_s ~who: dn ~cred: cred ~auth_method: meth con;

@@ -134,10 +134,13 @@ let receive_message con msgid =
 
 exception Timeout
 
-let init ?(connect_timeout = 1) ?(version = 3) hosts =
+let init ?(connect_timeout = 1) ?(timeout) ?(version = 3) hosts =
   if ((version < 2) || (version > 3)) then
     raise (LDAP_Failure (`LOCAL_ERROR, "invalid protocol version", ext_res))
   else
+    let connect_timeout = match timeout with
+        Some t -> t
+      | None -> (float_of_int connect_timeout) in
     let fd =
       let addrs =
         (List.flatten
@@ -168,11 +171,16 @@ let init ?(connect_timeout = 1) ?(version = 3) hosts =
                  if mech = `PLAIN then
                    let s = socket PF_INET SOCK_STREAM 0 in
                      try
+                       (match timeout with
+                            Some t ->
+                              setsockopt_float s SO_RCVTIMEO t;
+                              setsockopt_float s SO_SNDTIMEO t
+                          | None -> ());
                        set_nonblock s;
                        (try connect s (ADDR_INET (addr, port))
                         with Unix_error (EINPROGRESS, _, _) -> ());
                        let (_, ok, _) =
-                         select [] [s] [] (float_of_int connect_timeout)
+                         select [] [s] [] connect_timeout
                        in
                          match getsockopt_error s with
                              Some err ->
@@ -184,7 +192,7 @@ let init ?(connect_timeout = 1) ?(version = 3) hosts =
                      with exn -> close s;raise exn
                  else
                    Ssl (Ssl.open_connection
-                          ~timeout:(float_of_int connect_timeout)
+                          ~timeout:connect_timeout
                           Ssl.SSLv23
                           (ADDR_INET (addr, port)))
                with
