@@ -36,7 +36,7 @@ end
     only after the function has been applied. If the function
     generates any exception, this wrapper catches that exception, and
     unlocks the mutex before reraising the exception. Generally
-    garentees that the mutex will always be used consistantly when
+    guarantees that the mutex will always be used consistantly when
     performing an action. *)
 val apply_with_mutex: mutex -> (unit -> 'a) -> 'a
 

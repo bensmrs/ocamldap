@@ -18,6 +18,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 *)
 
+open Ldap_control
 open Ldap_types
 open Ldap_protocol
 open Lber
@@ -25,15 +26,13 @@ open Unix
 
 type msgid = Int32.t
 
-type ld_socket = Ssl of Ssl.socket
-                 | Plain of file_descr
-
 type conn = {
   mutable rb: readbyte;
   mutable socket: ld_socket; (* communications channel to the ldap server *)
   mutable current_msgid: Int32.t; (* the largest message id allocated so far *)
   pending_messages: (int32, ldap_message Queue.t) Hashtbl.t;
   protocol_version: int;
+  timeout: float;
 }
 
 type modattr = modify_optype * string * string list
@@ -76,13 +75,7 @@ let free_messageid con msgid =
 
 (* send an ldapmessage *)
 let send_message con msg =
-  let write ld_socket buf off len =
-    match ld_socket with
-        Ssl s ->
-          (try Ssl.write s buf off len
-           with Ssl.Write_error _ -> raise (Unix_error (EPIPE, "Ssl.write", "")))
-      | Plain s -> Unix.write s buf off len
-  in
+  let write = wrap Write con.timeout in
   let e_msg = Ldap_protocol.encode_ldapmessage msg in
   let e_msg = Bytes.of_string e_msg in
   let len = Bytes.length e_msg in
@@ -132,8 +125,6 @@ let receive_message con msgid =
       | Readbyte_error End_of_stream ->
           raise (LDAP_Failure (`LOCAL_ERROR, "bug in ldap decoder detected", ext_res))
 
-exception Timeout
-
 let init ?(connect_timeout = 1) ?(timeout) ?(version = 3) hosts =
   if ((version < 2) || (version > 3)) then
     raise (LDAP_Failure (`LOCAL_ERROR, "invalid protocol version", ext_res))
@@ -141,7 +132,7 @@ let init ?(connect_timeout = 1) ?(timeout) ?(version = 3) hosts =
     let connect_timeout = match timeout with
         Some t -> t
       | None -> (float_of_int connect_timeout) in
-    let fd =
+    let sock =
       let addrs =
         (List.flatten
            (List.map
@@ -168,33 +159,10 @@ let init ?(connect_timeout = 1) ?(timeout) ?(version = 3) hosts =
         match addrs with
             (mech, addr, port) :: tl ->
               (try
-                 if mech = `PLAIN then
-                   let s = socket PF_INET SOCK_STREAM 0 in
-                     try
-                       (match timeout with
-                            Some t ->
-                              setsockopt_float s SO_RCVTIMEO t;
-                              setsockopt_float s SO_SNDTIMEO t
-                          | None -> ());
-                       set_nonblock s;
-                       (try connect s (ADDR_INET (addr, port))
-                        with Unix_error (EINPROGRESS, _, _) -> ());
-                       let (_, ok, _) =
-                         select [] [s] [] connect_timeout
-                       in
-                         match getsockopt_error s with
-                             Some err ->
-                               raise (Unix_error (err, "open_con", ""))
-                           | None ->
-                               if ok <> [s] then raise Timeout;
-                               clear_nonblock s;
-                               Plain s
-                     with exn -> close s;raise exn
-                 else
-                   Ssl (Ssl.open_connection
-                          ~timeout:connect_timeout
-                          Ssl.SSLv23
-                          (ADDR_INET (addr, port)))
+                 let s = socket PF_INET SOCK_STREAM 0 in
+                   try
+                     Ldap_control.connect mech connect_timeout s (ADDR_INET (addr, port))
+                   with exn -> close s;raise exn
                with
                    Unix_error (ECONNREFUSED, _, _)
                  | Unix_error (EHOSTDOWN, _, _)
@@ -202,19 +170,18 @@ let init ?(connect_timeout = 1) ?(timeout) ?(version = 3) hosts =
                  | Unix_error (ECONNRESET, _, _)
                  | Unix_error (ECONNABORTED, _, _)
                  | Unix_error (ETIMEDOUT, _, _)
-                 | Ssl.Connection_error _
-                 | Timeout -> open_con tl)
+                 | Ssl.Connection_error _ -> open_con tl)
           | [] -> raise (LDAP_Failure (`SERVER_DOWN, "", ext_res))
       in
         open_con addrs
     in
-      {rb=(match fd with
-               Ssl s -> Lber.readbyte_of_ssl s
-             | Plain s -> Lber.readbyte_of_fd s);
-       socket=fd;
-       current_msgid=1l;
-       pending_messages=(Hashtbl.create 3);
-       protocol_version=version}
+      let rw_timeout = Option.value ~default:(-1.) timeout in
+        {rb=Lber.readbyte_of_socket rw_timeout sock;
+         socket=sock;
+         current_msgid=1l;
+         pending_messages=(Hashtbl.create 3);
+         protocol_version=version;
+         timeout=rw_timeout}
 
 (* sync auth_method types between the two files *)
 let bind_s ?(who = "") ?(cred = "") ?(auth_method = `SIMPLE) con =
@@ -284,9 +251,9 @@ let get_search_entry con msgid =
       | {protocolOp=Search_result_done {result_code=`SUCCESS;_};_} ->
           raise (LDAP_Failure (`SUCCESS, "success", ext_res))
       | {protocolOp=Search_result_done res;_} ->
-        raise (LDAP_Failure (res.result_code, res.error_message,
-                             {ext_matched_dn=res.matched_dn;
-                              ext_referral=res.ldap_referral}))
+          raise (LDAP_Failure (res.result_code, res.error_message,
+                               {ext_matched_dn=res.matched_dn;
+                                ext_referral=res.ldap_referral}))
       | _ -> raise (LDAP_Failure (`LOCAL_ERROR, "unexpected search response", ext_res))
   with exn -> free_messageid con msgid;raise exn
 

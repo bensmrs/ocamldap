@@ -58,18 +58,12 @@ val readbyte_of_string : string -> readbyte
     @raise Readbyte_error in the event of a an io error, or the end of file *)
 val readbyte_of_ber_element : ber_length -> readbyte -> readbyte
 
-(** a readbyte implementation which reads from an FD. It implements a
-    peek buffer, so it can garentee that it will work with
+(** a readbyte implementation which reads from an FD or an SSL socket. It
+    implements a peek buffer, so it can guarantee that it will work with
     rb_of_ber_element, even with blocking fds.
 
     @raise Readbyte_error in the event of a an io error, or the end of file *)
-val readbyte_of_fd: Unix.file_descr -> readbyte
-
-(** a readbyte implementation which reads from an SSL socket. It is
-    otherwise the same as readbyte_of_fd.
-
-    @raise Readbyte_error in the event of a an io error, or the end of file *)
-val readbyte_of_ssl: Ssl.socket -> readbyte
+val readbyte_of_socket: float -> Ldap_control.ld_socket -> readbyte
 
 (** decoding and encoding of the ber header *)
 val decode_ber_header : ?peek:bool -> readbyte -> ber_val_header

@@ -53,6 +53,34 @@ object
   method print : unit
 end;;
 
+class type ldapcon_t =
+object
+  method bind :
+    ?cred:string -> ?meth:Ldap_funclient.authmethod -> string -> unit
+  method unbind : unit
+  method search :
+    ?scope:Ldap_types.search_scope ->
+    ?attrs:string list ->
+    ?attrsonly:bool -> ?base:string ->
+    ?sizelimit:Int32.t -> ?timelimit:Int32.t ->
+    string -> ldapentry_t list
+  method search_a :
+    ?scope:Ldap_types.search_scope ->
+    ?attrs:string list ->
+    ?attrsonly:bool -> ?base:string ->
+    ?sizelimit:Int32.t -> ?timelimit:Int32.t ->
+    string -> (?abandon:bool -> unit -> ldapentry_t)
+  method rawschema : ldapentry_t
+  method schema : Ldap_schemaparser.schema
+  method add : ldapentry_t -> unit
+  method delete : string -> unit
+  method modify :
+    string ->
+    (Ldap_types.modify_optype * string * string list) list -> unit
+  method update_entry : ldapentry_t -> unit
+  method modrdn : string -> ?deleteoldrdn:bool -> ?newsup:string option -> string -> unit
+end;;
+
 let format_entry e =
   Format.open_box 0;
   Format.open_box 2;

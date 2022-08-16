@@ -20,6 +20,8 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 *)
 
+open Ldap_control
+
 exception Decoding_error of string
 exception Encoding_error of string
 
@@ -260,24 +262,13 @@ let readbyte_of_readfun rfun =
   in
     rb
 
-(* a readbyte implementation which reads from an FD. It implements a
-   peek buffer, so it can garentee that it will work with
+(* a readbyte implementation which reads from an FD or an SSL socket. It
+   implements a peek buffer, so it can guarantee that it will work with
    readbyte_of_ber_element, even with blocking fds. *)
-let readbyte_of_fd fd =
+let readbyte_of_socket timeout sock =
   readbyte_of_readfun
-    (fun buf off len ->
-       try Unix.read fd buf off len
-       with exn ->
-         (try Unix.close fd with _ -> ());raise exn)
-
-(* a readbyte implementation which reads from an SSL socket. It is
-   otherwise the same as rb_of_fd *)
-let readbyte_of_ssl fd =
-  readbyte_of_readfun
-    (fun buf off len ->
-       try Ssl.read fd buf off len
-       with exn ->
-         (try Ssl.shutdown fd with _ -> ());raise exn)
+    (fun buf off len -> try wrap Read timeout sock buf off len with
+         exn -> (try close sock with _ -> ()); raise exn)
 
 let decode_ber_length ?(peek=false) (readbyte:readbyte) = (* sec. 8.1.3.3, the definite length form *)
   let octet = int_of_char (readbyte ~peek:peek 1).[0] in

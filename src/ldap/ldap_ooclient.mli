@@ -42,21 +42,65 @@ type changetype = [ `ADD | `DELETE | `MODDN | `MODIFY | `MODRDN ]
 (** The base type of an ldap entry represented in memory. *)
 class type ldapentry_t =
 object
+  (** add values to an attribute (or create a new attribute). Does
+      not change the server until you update *)
   method add : op_lst -> unit
+
+  (** return a list of the type (name) of all the attributes present
+  on the object *)
   method attributes : string list
+
+  (** return a list of changes made to the object in a the format of
+      a modify operation. For example, you can apply the changes to another
+      ldapentry object using the {!Ldap_ooclient.ldapentry.modify}
+      method *)
   method changes : (Ldap_types.modify_optype * string * string list) list
+
+  (** return the changetype of the object *)
   method changetype : changetype
+
+  (** delete attributes from the object, does not change the
+  directory until you update *)
   method delete : op_lst -> unit
+
+  (** return the dn of the object *)
   method dn : string
+
+  (** given an ldapentry, return the differences between the current
+      entry and the specified entry in the form of a modify
+      operation which would make the specified entry the same as the
+      current entry. *)
   method diff : ldapentry_t -> (modify_optype * string * string list) list
+
+  (** query whether the attribute type (name) exists in the object *)
   method exists : string -> bool
+
+  (** clear all accumulated changes *)
   method flush_changes : unit
+
+  (** get the value of an attribute
+      @raise Not_found If the attribute does not exist. *)
   method get_value : string -> string list
+
+  (** Apply modifications to object in memory, does not change the
+      database until you update using
+      {!Ldap_ooclient.ldapcon.update_entry} *)
   method modify :
     (Ldap_types.modify_optype * string * string list) list -> unit
+
+  (** @deprecated print an ldif like representation of the object to stdout, see
+      Ldif_oo for standards compliant ldif. Usefull for toplevel
+      sessions. *)
   method print : unit
+
+  (** replace values in the object, does not change the database
+  until you call update *)
   method replace : op_lst -> unit
+
+  (** set the changetype of the object *)
   method set_changetype : changetype -> unit
+
+  (** set the dn of the object *)
   method set_dn : string -> unit
 end
 
@@ -64,69 +108,7 @@ end
     records all local changes made to it (if it's changetype is set to
     `MODIFY), and can commit them to the server at a later time via
     {!Ldap_ooclient.ldapcon.update_entry}. *)
-class ldapentry :
-object
-  (** add values to an attribute (or create a new attribute). Does
-      not change the server until you update *)
-    method add : op_lst -> unit
-
-    (** return a list of the type (name) of all the attributes present
-    on the object *)
-    method attributes : string list
-
-    (** return a list of changes made to the object in a the format of
-        a modify operation. For example, you can apply the changes to another
-        ldapentry object using the {!Ldap_ooclient.ldapentry.modify}
-        method *)
-    method changes : (Ldap_types.modify_optype * string * string list) list
-
-    (** return the changetype of the object *)
-    method changetype : changetype
-
-    (** delete attributes from the object, does not change the
-    directory until you update *)
-    method delete : op_lst -> unit
-
-    (** return the dn of the object *)
-    method dn : string
-
-    (** given an ldapentry, return the differences between the current
-        entry and the specified entry in the form of a modify
-        operation which would make the specified entry the same as the
-        current entry. *)
-    method diff : ldapentry_t -> (modify_optype * string * string list) list
-
-    (** query whether the attribute type (name) exists in the object *)
-    method exists : string -> bool
-
-    (** clear all accumulated changes *)
-    method flush_changes : unit
-
-    (** get the value of an attribute
-        @raise Not_found If the attribute does not exist. *)
-    method get_value : string -> string list
-
-    (** Apply modifications to object in memory, does not change the
-        database until you update using
-        {!Ldap_ooclient.ldapcon.update_entry} *)
-    method modify :
-      (Ldap_types.modify_optype * string * string list) list -> unit
-
-    (** @deprecated print an ldif like representation of the object to stdout, see
-        Ldif_oo for standards compliant ldif. Usefull for toplevel
-        sessions. *)
-    method print : unit
-
-    (** replace values in the object, does not change the database
-    until you call update *)
-    method replace : op_lst -> unit
-
-    (** set the changetype of the object *)
-    method set_changetype : changetype -> unit
-
-    (** set the dn of the object *)
-    method set_dn : string -> unit
-  end
+class ldapentry : ldapentry_t
 
 (** {1 Miscallaneous} *)
 
@@ -167,58 +149,9 @@ val of_entry : ldapentry -> search_result_entry
 
 (** {1 Interacting with LDAP Servers} *)
 
-(** This class abstracts a connection to an LDAP server (or servers),
-    an instance will be connected to the server you specify and can be
-    used to perform operations on that server.
-
-    {2 Example}
-
-    [new ldapcon ~connect_timeout:5 ~version:3
-    ["ldap://first.ldap.server";"ldap://second.ldap.server"]].
-
-    In addition to specifying multiple urls, if DNS names are given,
-    and those names are bound to multiple addresses, then all possible
-    addresses will be tried.
-
-    {2 Example}
-
-    [new ldapcon ["ldaps://rrldap.csun.edu"]]
-
-    is equivelant to
-
-    [new ldapcon ["ldap://130.166.1.30";"ldap://130.166.1.31";"ldap://130.166.1.32"]]
-
-    This means that if any host in the rr fails, the ldapcon will
-    transparently move on to the next host, and you will never know
-    the difference.
-
-    @raise LDAP_Failure All methods raise {!Ldap_types.LDAP_Failure} on error
-
-    @param connect_timeout Default [1], an integer which specifies how
-    long to wait for any given server in the list to respond before
-    trying the next one. After all the servers have been tried for
-    [connect_timeout] seconds [LDAP_Failure (`SERVER_DOWN, ...)]  will
-    be raised.
-
-    @param timeout Replaces [connect_timeout]. A float version of
-    [connect_timeout] which also specifies read and write timeouts.
-
-    @param referral_policy In a future version of ocamldap this will
-    be used to specify what you would like to do in the event of a
-    referral. Currently it does nothing and is ignored see
-    {!Ldap_ooclient.referral_policy}.
-
-    @param version The protocol version to use, the default is [3],
-    the other recognized value is [2].
-*)
-class ldapcon :
-  ?connect_timeout:int ->
-  ?timeout:float ->
-  ?referral_policy:[> `RETURN ] ->
-  ?version:int ->
-  string list ->
+(** The base type of an ldap connection. *)
+class type ldapcon_t =
 object
-
   (** {1 Authentication} *)
 
   (** bind to the database using dn.
@@ -341,6 +274,58 @@ object
   method modrdn : string -> ?deleteoldrdn:bool -> ?newsup:string option -> string -> unit
 end
 
+(** This class abstracts a connection to an LDAP server (or servers),
+    an instance will be connected to the server you specify and can be
+    used to perform operations on that server.
+
+    {2 Example}
+
+    [new ldapcon ~connect_timeout:5 ~version:3
+    ["ldap://first.ldap.server";"ldap://second.ldap.server"]].
+
+    In addition to specifying multiple urls, if DNS names are given,
+    and those names are bound to multiple addresses, then all possible
+    addresses will be tried.
+
+    {2 Example}
+
+    [new ldapcon ["ldaps://rrldap.csun.edu"]]
+
+    is equivelant to
+
+    [new ldapcon ["ldap://130.166.1.30";"ldap://130.166.1.31";"ldap://130.166.1.32"]]
+
+    This means that if any host in the rr fails, the ldapcon will
+    transparently move on to the next host, and you will never know
+    the difference.
+
+    @raise LDAP_Failure All methods raise {!Ldap_types.LDAP_Failure} on error
+
+    @param connect_timeout Default [1], an integer which specifies how
+    long to wait for any given server in the list to respond before
+    trying the next one. After all the servers have been tried for
+    [connect_timeout] seconds [LDAP_Failure (`SERVER_DOWN, ...)]  will
+    be raised.
+
+    @param timeout Replaces [connect_timeout]. A float version of
+    [connect_timeout] which also specifies read and write timeouts.
+
+    @param referral_policy In a future version of ocamldap this will
+    be used to specify what you would like to do in the event of a
+    referral. Currently it does nothing and is ignored see
+    {!Ldap_ooclient.referral_policy}.
+
+    @param version The protocol version to use, the default is [3],
+    the other recognized value is [2].
+*)
+class ldapcon :
+  ?connect_timeout:int ->
+  ?timeout:float ->
+  ?referral_policy:[> `RETURN ] ->
+  ?version:int ->
+  string list ->
+  ldapcon_t
+
 (** {1 Iterators Over Streams of ldapentry Objects} *)
 
 (** given a source of ldapentry objects (unit -> ldapentry), such as
@@ -367,7 +352,7 @@ val fold : (ldapentry -> 'a -> 'a) -> 'a -> (?abandon:bool -> unit -> ldapentry)
 (** {2 General Schema Aware Entry} *)
 (** {!Ldap_ooclient.scldapentry}, A schema aware derivative of {!Ldap_ooclient.ldapentry}.
     It contains an rfc2252 schema checker, and given the database schema, it can
-    be used to garentee that operations performed in memory are valid
+    be used to guarantee that operations performed in memory are valid
     against a standards compliant database. It has numerious uses,
     translation between two databases with different schemas an
     example of where it finds natural usage. For an example
