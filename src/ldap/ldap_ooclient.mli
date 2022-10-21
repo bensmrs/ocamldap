@@ -37,6 +37,9 @@ type referral_policy = [ `FOLLOW | `RETURN ]
     it's behavior *)
 type changetype = [ `ADD | `DELETE | `MODDN | `MODIFY | `MODRDN ]
 
+(** The type of an operation hook *)
+type hook = (unit -> unit) -> unit
+
 (** {1 Local Representation of LDAP Objects} *)
 
 (** The base type of an ldap entry represented in memory. *)
@@ -233,6 +236,18 @@ object
   method schema : Ldap_schemaparser.schema
 
   (** {1 Making Modifications} *)
+
+  (** default operation hook *)
+  method default_hook : hook
+
+  (** current operation hooks *)
+  method add_hook : hook
+  method delete_hook : hook
+  method modify_hook : hook
+  method modrdn_hook : hook
+
+  (** hook an LDAP operation *)
+  method hook : changetype -> hook option -> unit
 
   (** add an entry to the database *)
   method add : ldapentry -> unit

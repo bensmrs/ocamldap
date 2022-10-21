@@ -34,6 +34,9 @@ type referral_policy = [ `RETURN
 (* change type for ldap entry *)
 type changetype = [ `ADD | `DELETE | `MODIFY | `MODDN | `MODRDN ]
 
+(* operation hook type *)
+type hook = (unit -> unit) -> unit
+
 class type ldapentry_t =
 object
   method add : op_lst -> unit
@@ -72,6 +75,12 @@ object
     string -> (?abandon:bool -> unit -> ldapentry_t)
   method rawschema : ldapentry_t
   method schema : Ldap_schemaparser.schema
+  method default_hook : hook
+  method add_hook : hook
+  method delete_hook : hook
+  method modify_hook : hook
+  method modrdn_hook : hook
+  method hook : changetype -> hook option -> unit
   method add : ldapentry_t -> unit
   method delete : string -> unit
   method modify :
@@ -444,29 +453,54 @@ object (self)
     reconnect_successful <- true;
     bdn <- dn; pwd <- cred; mth <- meth
 
+  method default_hook (f : unit -> unit) =
+    try f ()
+    with LDAP_Failure(`SERVER_DOWN, _, _) ->
+      self#reconnect;self#default_hook f
+
+  val mutable add_hook = None
+  method add_hook = match add_hook with Some f -> f | None -> self#default_hook
+  val mutable delete_hook = None
+  method delete_hook = match delete_hook with Some f -> f | None -> self#default_hook
+  val mutable modify_hook = None
+  method modify_hook = match modify_hook with Some f -> f | None -> self#default_hook
+  val mutable modrdn_hook = None
+  method modrdn_hook = match modrdn_hook with Some f -> f | None -> self#default_hook
+
+  method hook (operation : changetype) hook = match operation with
+      `ADD -> add_hook <- hook
+    | `DELETE -> delete_hook <- hook
+    | `MODIFY -> modify_hook <- hook
+    | `MODDN
+    | `MODRDN -> modrdn_hook <- hook
+
   method add (entry: ldapentry) =
-      if not (reconnect_successful && bound) then self#reconnect;
-      try add_s con (of_entry entry)
-      with LDAP_Failure(`SERVER_DOWN, _, _) ->
-        self#reconnect;self#add entry
+    self#add_hook (self#_add entry)
+
+  method private _add entry () =
+    if not (reconnect_successful && bound) then self#reconnect;
+    add_s con (of_entry entry)
 
   method delete dn =
+    self#delete_hook (self#_delete dn)
+
+  method private _delete dn () =
     if not (reconnect_successful && bound) then self#reconnect;
-    try delete_s con ~dn
-    with LDAP_Failure(`SERVER_DOWN, _, _) ->
-      self#reconnect;self#delete dn
+    delete_s con ~dn
 
   method modify dn mods =
+    self#modify_hook (self#_modify dn mods)
+
+  method private _modify dn mods () =
     if not (reconnect_successful && bound) then self#reconnect;
-    try modify_s con ~dn ~mods
-    with LDAP_Failure(`SERVER_DOWN, _, _) ->
-      self#reconnect;self#modify dn mods
+    modify_s con ~dn ~mods
 
   method modrdn dn ?(deleteoldrdn = true) ?(newsup: string option=None) newrdn =
+    self#modrdn_hook (self#_modrdn dn deleteoldrdn newsup newrdn)
+
+  method private _modrdn dn deleteoldrdn newsup newrdn () =
     if not (reconnect_successful && bound) then self#reconnect;
-    try modrdn_s con ~dn ~newdn:newrdn ~deleteoldrdn ~newsup
-    with LDAP_Failure(`SERVER_DOWN, _, _) ->
-      self#reconnect;self#modrdn dn ~deleteoldrdn:deleteoldrdn newrdn
+    modrdn_s con ~dn ~newdn:newrdn ~deleteoldrdn ~newsup
 
   method search
     ?(scope = `SUBTREE)

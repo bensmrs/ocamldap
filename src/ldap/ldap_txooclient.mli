@@ -40,6 +40,12 @@ class ldapadvisorytxcon :
   ?version:int ->
   string list -> string -> string -> string -> (* hosts binddn bindpw mutextbldn *)
   object
+    method default_hook : Ldap_ooclient.hook
+    method add_hook : Ldap_ooclient.hook
+    method delete_hook : Ldap_ooclient.hook
+    method modify_hook : Ldap_ooclient.hook
+    method modrdn_hook : Ldap_ooclient.hook
+    method hook : Ldap_ooclient.changetype -> Ldap_ooclient.hook option -> unit
     method add : ldapentry -> unit
     method bind :
       ?cred:string -> ?meth:Ldap_funclient.authmethod -> string -> unit
