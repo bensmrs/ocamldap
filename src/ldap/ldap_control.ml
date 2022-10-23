@@ -23,7 +23,9 @@ type ld_socket = Ssl of Ssl.socket
                | Plain of Unix.file_descr
 
 let close = function
-  | Ssl sock -> Ssl.shutdown sock
+  | Ssl sock ->
+      Unix.set_nonblock (Ssl.file_descr_of_socket sock);
+      Ssl.shutdown sock
   | Plain fd -> Unix.close fd
 
 let wrap op timeout sock buf off len =
