@@ -1,6 +1,6 @@
 (lang dune 2.7)
 (name ldap)
-(version 2.4.2)
+(version 2.4.3)
 
 (formatting disabled)
 (generate_opam_files true)
@@ -19,7 +19,7 @@
     (ocaml (>= 4.03.0))
     (ocamlnet (>= 3.6.0))
     pcre
-    (ssl (>= 0.5.3)))
+    (ssl (>= 0.5.8)))
   (conflicts
     (ocamldap (<> transition)))
   (tags ("ldap")))

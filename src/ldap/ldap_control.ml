@@ -62,7 +62,7 @@ let connect mech timeout sock addr =
         (match mech with
            `PLAIN -> Plain sock
          | `SSL ->
-             let context = Ssl.create_context SSLv23 Client_context
+             let context = Ssl.create_context TLSv1_3 Client_context
              in
                Unix.clear_nonblock sock;
                let ssl = Ssl.embed_socket sock context in
